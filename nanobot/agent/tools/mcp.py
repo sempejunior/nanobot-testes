@@ -34,7 +34,7 @@ class MCPToolWrapper(Tool):
     def parameters(self) -> dict[str, Any]:
         return self._parameters
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> str | list[dict[str, Any]]:
         from mcp import types
         try:
             result = await asyncio.wait_for(
@@ -44,13 +44,25 @@ class MCPToolWrapper(Tool):
         except asyncio.TimeoutError:
             logger.warning("MCP tool '{}' timed out after {}s", self._name, self._tool_timeout)
             return f"(MCP tool call timed out after {self._tool_timeout}s)"
-        parts = []
+        text_parts: list[str] = []
+        image_blocks: list[dict[str, Any]] = []
         for block in result.content:
             if isinstance(block, types.TextContent):
-                parts.append(block.text)
+                text_parts.append(block.text)
+            elif isinstance(block, types.ImageContent):
+                mime_type = block.mimeType or "image/png"
+                data_url = f"data:{mime_type};base64,{block.data}"
+                image_blocks.append({"type": "image_url", "image_url": {"url": data_url}})
             else:
-                parts.append(str(block))
-        return "\n".join(parts) or "(no output)"
+                text_parts.append(str(block))
+        if image_blocks:
+            content: list[dict[str, Any]] = []
+            text = "\n".join(text_parts)
+            if text:
+                content.append({"type": "text", "text": text})
+            content.extend(image_blocks)
+            return content or [{"type": "text", "text": "(no output)"}]
+        return "\n".join(text_parts) or "(no output)"
 
 
 async def connect_mcp_servers(
@@ -69,8 +81,6 @@ async def connect_mcp_servers(
                 read, write = await stack.enter_async_context(stdio_client(params))
             elif cfg.url:
                 from mcp.client.streamable_http import streamable_http_client
-                # Always provide an explicit httpx client so MCP HTTP transport does not
-                # inherit httpx's default 5s timeout and preempt the higher-level tool timeout.
                 http_client = await stack.enter_async_context(
                     httpx.AsyncClient(
                         headers=cfg.headers or None,

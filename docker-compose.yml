@@ -9,23 +9,31 @@ services:
   nanobot-gateway:
     container_name: nanobot-gateway
     <<: *common-config
-    command: ["gateway"]
+    command: [ "gateway", "--multiuser" ]
     restart: unless-stopped
+    shm_size: '512m'
     ports:
       - 18790:18790
+      - 6080:6080
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18790/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
+          cpus: '2'
+          memory: 4G
         reservations:
-          cpus: '0.25'
-          memory: 256M
-  
+          cpus: '0.5'
+          memory: 512M
+
   nanobot-cli:
     <<: *common-config
     profiles:
       - cli
-    command: ["status"]
+    command: [ "status" ]
     stdin_open: true
     tty: true

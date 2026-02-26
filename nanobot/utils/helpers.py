@@ -57,7 +57,6 @@ def truncate_string(s: str, max_len: int = 100, suffix: str = "...") -> str:
 
 def safe_filename(name: str) -> str:
     """Convert a string to a safe filename."""
-    # Replace unsafe characters
     unsafe = '<>:"/\\|?*'
     for char in unsafe:
         name = name.replace(char, "_")

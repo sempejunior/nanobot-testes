@@ -40,15 +40,17 @@ class Tool(ABC):
         pass
     
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> str | list[dict[str, Any]]:
         """
         Execute the tool with given parameters.
-        
+
         Args:
             **kwargs: Tool-specific parameters.
-        
+
         Returns:
-            String result of the tool execution.
+            String result, or list of OpenAI content blocks for multimodal
+            results (e.g. ``[{"type": "text", ...}, {"type": "image_url", ...}]``).
+            LiteLLM translates to Anthropic format automatically.
         """
         pass
 

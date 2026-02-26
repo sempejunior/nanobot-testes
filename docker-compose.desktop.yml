@@ -1,0 +1,38 @@
+services:
+  nanobot-desktop:
+    container_name: nanobot-desktop
+    build:
+      context: .
+      dockerfile: docker/desktop/Dockerfile
+      args:
+        VNC_PASSWORD: nanobot
+        VNC_RESOLUTION: 1280x720
+    ports:
+      # noVNC — open http://localhost:6080/vnc.html in your browser
+      - "6080:6080"
+      # VNC direct (optional, for native VNC clients)
+      - "5900:5900"
+      # nanobot gateway
+      - "18790:18790"
+    volumes:
+      # Persist nanobot config/data between restarts
+      - nanobot-data:/root/.nanobot
+      # Persist workspace files
+      - nanobot-workspace:/root/.nanobot/workspace
+    environment:
+      - VNC_PASSWORD=nanobot
+      - VNC_RESOLUTION=1280x720
+    shm_size: '512m'
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  nanobot-data:
+  nanobot-workspace:

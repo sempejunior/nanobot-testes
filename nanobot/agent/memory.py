@@ -11,6 +11,7 @@ from loguru import logger
 from nanobot.utils.helpers import ensure_dir
 
 if TYPE_CHECKING:
+    from nanobot.db.repositories import MemoryRepository
     from nanobot.providers.base import LLMProvider
     from nanobot.session.manager import Session
 
@@ -43,27 +44,72 @@ _SAVE_MEMORY_TOOL = [
 
 
 class MemoryStore:
-    """Two-layer memory: MEMORY.md (long-term facts) + HISTORY.md (grep-searchable log)."""
+    """Two-layer memory: MEMORY.md (long-term facts) + HISTORY.md (grep-searchable log).
 
-    def __init__(self, workspace: Path):
-        self.memory_dir = ensure_dir(workspace / "memory")
-        self.memory_file = self.memory_dir / "MEMORY.md"
-        self.history_file = self.memory_dir / "HISTORY.md"
+    Supports two modes:
+    - Filesystem mode: reads/writes MEMORY.md and HISTORY.md files (backward compatible)
+    - DB mode: uses MemoryRepository for persistence
+    """
 
-    def read_long_term(self) -> str:
+    def __init__(
+        self,
+        workspace: Path | None = None,
+        *,
+        memory_repo: MemoryRepository | None = None,
+        user_id: str | None = None,
+    ):
+        if memory_repo is not None:
+            self._mode = "db"
+            self._repo = memory_repo
+            self._user_id = user_id
+        elif workspace is not None:
+            self._mode = "fs"
+            self.memory_dir = ensure_dir(workspace / "memory")
+            self.memory_file = self.memory_dir / "MEMORY.md"
+            self.history_file = self.memory_dir / "HISTORY.md"
+        else:
+            raise ValueError("Either workspace or memory_repo must be provided")
+
+    async def read_long_term(self) -> str:
+        if self._mode == "db":
+            return await self._repo.get_long_term(self._user_id)
         if self.memory_file.exists():
             return self.memory_file.read_text(encoding="utf-8")
         return ""
 
-    def write_long_term(self, content: str) -> None:
-        self.memory_file.write_text(content, encoding="utf-8")
+    async def write_long_term(self, content: str) -> None:
+        if self._mode == "db":
+            await self._repo.save_long_term(self._user_id, content)
+        else:
+            self.memory_file.write_text(content, encoding="utf-8")
 
-    def append_history(self, entry: str) -> None:
-        with open(self.history_file, "a", encoding="utf-8") as f:
-            f.write(entry.rstrip() + "\n\n")
+    async def append_history(self, entry: str) -> None:
+        if self._mode == "db":
+            await self._repo.append_history(self._user_id, entry)
+        else:
+            with open(self.history_file, "a", encoding="utf-8") as f:
+                f.write(entry.rstrip() + "\n\n")
 
-    def get_memory_context(self) -> str:
-        long_term = self.read_long_term()
+    async def search_history(self, query: str, limit: int = 20) -> list[str]:
+        """Search conversation history for matching entries."""
+        if self._mode == "db":
+            results = await self._repo.search_history(self._user_id, query, limit)
+            if not results:
+                return []
+            return [r["content"] if isinstance(r, dict) else r for r in results]
+        else:
+            if not self.history_file.exists():
+                return []
+            content = self.history_file.read_text(encoding="utf-8")
+            query_lower = query.lower()
+            matches = [
+                line for line in content.split("\n\n")
+                if query_lower in line.lower()
+            ]
+            return matches[:limit]
+
+    async def get_memory_context(self) -> str:
+        long_term = await self.read_long_term()
         return f"## Long-term Memory\n{long_term}" if long_term else ""
 
     async def consolidate(
@@ -75,7 +121,7 @@ class MemoryStore:
         archive_all: bool = False,
         memory_window: int = 50,
     ) -> bool:
-        """Consolidate old messages into MEMORY.md + HISTORY.md via LLM tool call.
+        """Consolidate old messages into memory via LLM tool call.
 
         Returns True on success (including no-op), False on failure.
         """
@@ -101,7 +147,7 @@ class MemoryStore:
             tools = f" [tools: {', '.join(m['tools_used'])}]" if m.get("tools_used") else ""
             lines.append(f"[{m.get('timestamp', '?')[:16]}] {m['role'].upper()}{tools}: {m['content']}")
 
-        current_memory = self.read_long_term()
+        current_memory = await self.read_long_term()
         prompt = f"""Process this conversation and call the save_memory tool with your consolidation.
 
 ## Current Long-term Memory
@@ -125,7 +171,6 @@ class MemoryStore:
                 return False
 
             args = response.tool_calls[0].arguments
-            # Some providers return arguments as a JSON string instead of dict
             if isinstance(args, str):
                 args = json.loads(args)
             if not isinstance(args, dict):
@@ -135,12 +180,12 @@ class MemoryStore:
             if entry := args.get("history_entry"):
                 if not isinstance(entry, str):
                     entry = json.dumps(entry, ensure_ascii=False)
-                self.append_history(entry)
+                await self.append_history(entry)
             if update := args.get("memory_update"):
                 if not isinstance(update, str):
                     update = json.dumps(update, ensure_ascii=False)
                 if update != current_memory:
-                    self.write_long_term(update)
+                    await self.write_long_term(update)
 
             session.last_consolidated = 0 if archive_all else len(session.messages) - keep_count
             logger.info("Memory consolidation done: {} messages, last_consolidated={}", len(session.messages), session.last_consolidated)

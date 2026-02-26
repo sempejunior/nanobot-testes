@@ -1,35 +1,17 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
-from nanobot.heartbeat.service import (
-    HEARTBEAT_OK_TOKEN,
-    HeartbeatService,
-)
+from nanobot.heartbeat.service import HeartbeatService
 
 
-def test_heartbeat_ok_detection() -> None:
-    def is_ok(response: str) -> bool:
-        return HEARTBEAT_OK_TOKEN in response.upper()
-
-    assert is_ok("HEARTBEAT_OK")
-    assert is_ok("`HEARTBEAT_OK`")
-    assert is_ok("**HEARTBEAT_OK**")
-    assert is_ok("heartbeat_ok")
-    assert is_ok("HEARTBEAT_OK.")
-
-    assert not is_ok("HEARTBEAT_NOT_OK")
-    assert not is_ok("all good")
-
-
-@pytest.mark.asyncio
 async def test_start_is_idempotent(tmp_path) -> None:
-    async def _on_heartbeat(_: str) -> str:
-        return "HEARTBEAT_OK"
-
+    provider = AsyncMock()
     service = HeartbeatService(
         workspace=tmp_path,
-        on_heartbeat=_on_heartbeat,
+        provider=provider,
+        model="test-model",
         interval_s=9999,
         enabled=True,
     )
@@ -42,3 +24,17 @@ async def test_start_is_idempotent(tmp_path) -> None:
 
     service.stop()
     await asyncio.sleep(0)
+
+
+async def test_start_disabled(tmp_path) -> None:
+    provider = AsyncMock()
+    service = HeartbeatService(
+        workspace=tmp_path,
+        provider=provider,
+        model="test-model",
+        interval_s=9999,
+        enabled=False,
+    )
+
+    await service.start()
+    assert service._task is None

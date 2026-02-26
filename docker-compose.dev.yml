@@ -1,0 +1,45 @@
+services:
+  nanobot-gateway:
+    entrypoint: []
+    volumes:
+      - ./nanobot:/app/nanobot
+    environment:
+      PYTHONPATH: /app
+      DISPLAY: ":99"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18790/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    command: >
+      /bin/sh -c "
+        Xvfb :99 -screen 0 1280x720x24 -ac &
+        sleep 1 &&
+        fluxbox -display :99 &
+        x11vnc -display :99 -forever -nopw -shared -rfbport 5900 -bg -o /tmp/x11vnc.log &&
+        sleep 1 &&
+        websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
+        sleep 1 &&
+        xterm -display :99 -geometry 100x30+50+50 -fa Monospace -fs 11 -bg '#0d1117' -fg '#c9d1d9' -T 'nanobot terminal' &
+        chromium --display=:99 --no-sandbox --no-first-run --no-default-browser-check --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --remote-debugging-port=9222 --window-size=1200,650 --window-position=80,30 --disable-blink-features=AutomationControlled --user-agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' --lang=pt-BR --disable-infobars --disable-features=ChromeWhatsNewUI about:blank >/dev/null 2>&1 &
+        uv pip install --system 'watchdog[watchmedo]' &&
+        watchmedo auto-restart --directory=./nanobot --pattern='*.py' --recursive -- nanobot gateway --multiuser
+      "
+
+  nanobot-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: >
+      /bin/sh -c "cd /app/nanobot/web/frontend && npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./nanobot/web/frontend:/app/nanobot/web/frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: "http://nanobot-gateway:18790"
+    depends_on:
+      nanobot-gateway:
+        condition: service_healthy

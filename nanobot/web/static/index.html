@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nanobot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" rel="stylesheet">
+<style>
+/* ================================================================
+   PicPay-inspired Dark Theme
+   ================================================================ */
+:root {
+  --bg-primary: #111118;
+  --bg-secondary: #0D0D14;
+  --bg-tertiary: #1A1A26;
+  --bg-hover: #222233;
+  --bg-input: #1E1E2E;
+  --bg-user-msg: #21C25E;
+  --bg-bot-msg: #1A1A26;
+  --green: #21C25E;
+  --green-hover: #1BAF50;
+  --green-glow: rgba(33, 194, 94, 0.25);
+  --green-light: #4ADE80;
+  --green-dark: #15803d;
+  --text: #F0F0F5;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --border: #2A2A3A;
+  --danger: #EF4444;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --sidebar-w: 280px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+/* ================================================================
+   AUTH VIEW
+   ================================================================ */
+.auth-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #0a0a12 0%, #111120 50%, #0D1A10 100%);
+}
+
+.auth-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.auth-logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.auth-logo h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--green), var(--green-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-logo p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-glow);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  width: 100%;
+  background: var(--green);
+  color: #fff;
+}
+
+.btn-primary:hover { background: var(--green-hover); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--green);
+  padding: 8px;
+}
+
+.btn-ghost:hover { background: var(--bg-hover); }
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(239,68,68,0.3);
+}
+
+.btn-danger:hover { background: rgba(239,68,68,0.1); }
+
+.auth-toggle {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.auth-toggle a {
+  color: var(--green);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.auth-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #FCA5A5;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+
+/* ================================================================
+   CHAT VIEW
+   ================================================================ */
+.chat-view {
+  display: flex;
+  height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.btn-new-chat {
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn-new-chat:hover {
+  background: var(--bg-hover);
+  border-color: var(--green);
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.session-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item:hover { background: var(--bg-hover); color: var(--text); }
+
+.session-item.active {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.session-item .del-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.session-item:hover .del-btn { opacity: 1; }
+.session-item .del-btn:hover { color: var(--danger); }
+
+.session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* Main Chat */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-primary);
+}
+
+.chat-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 0;
+}
+
+.messages-inner {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-state h2 {
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--green), var(--green-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.empty-state p { font-size: 14px; max-width: 400px; }
+
+/* Message bubbles */
+.message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.message-avatar.user { background: var(--green); color: #fff; }
+.message-avatar.bot { background: var(--bg-hover); color: var(--green); border: 1px solid var(--border); }
+
+.message-content {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.message-content p { margin-bottom: 10px; }
+.message-content p:last-child { margin-bottom: 0; }
+
+.message-content ul, .message-content ol {
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
+
+.message-content code {
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.message-content pre {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  overflow-x: auto;
+  margin-bottom: 10px;
+}
+
+.message-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+}
+
+.message-content a {
+  color: var(--green-light);
+  text-decoration: none;
+}
+
+.message-content a:hover { text-decoration: underline; }
+
+.message-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.message-content th, .message-content td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.message-content th { background: var(--bg-hover); font-weight: 600; }
+
+/* Progress indicator */
+.progress-msg {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 4px 0;
+  animation: fadeIn 0.2s ease;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: bounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.16s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Input area */
+.input-area {
+  padding: 16px 24px 24px;
+  background: var(--bg-primary);
+}
+
+.input-wrapper {
+  max-width: 768px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.input-box {
+  display: flex;
+  align-items: flex-end;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-box:focus-within {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-glow);
+}
+
+.input-box textarea {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  max-height: 200px;
+  padding: 2px 0;
+}
+
+.input-box textarea::placeholder { color: var(--text-muted); }
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.send-btn:hover { background: var(--green-hover); }
+.send-btn:disabled { background: var(--bg-hover); cursor: default; }
+
+.send-btn svg { width: 18px; height: 18px; }
+
+.input-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+/* ================================================================
+   MODAL (Settings / Cron)
+   ================================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+
+.modal {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.modal h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.modal-close {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modal-close:hover { color: var(--text); }
+
+.cron-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.cron-item .cron-name { font-weight: 500; }
+.cron-item .cron-detail { color: var(--text-muted); font-size: 12px; }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+@media (max-width: 768px) {
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
+  .chat-header .menu-btn { display: block; }
+}
+
+.menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- AUTH VIEW -->
+  <div id="auth-view" class="auth-view">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <h1>nanobot</h1>
+        <p>Personal AI Assistant</p>
+      </div>
+      <div id="auth-error" class="auth-error"></div>
+      <div id="login-form">
+        <div class="form-group">
+          <label>User ID</label>
+          <input type="text" id="login-uid" placeholder="seu_user_id" autocomplete="username">
+        </div>
+        <button class="btn btn-primary" onclick="doLogin()">Entrar</button>
+        <div class="auth-toggle">
+          Novo aqui? <a onclick="showRegister()">Criar conta</a>
+        </div>
+      </div>
+      <div id="register-form" style="display:none">
+        <div class="form-group">
+          <label>User ID</label>
+          <input type="text" id="reg-uid" placeholder="meu_user_id" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" id="reg-name" placeholder="Seu nome">
+        </div>
+        <div class="form-group">
+          <label>Email (opcional)</label>
+          <input type="email" id="reg-email" placeholder="email@example.com">
+        </div>
+        <button class="btn btn-primary" onclick="doRegister()">Criar conta</button>
+        <div class="auth-toggle">
+          Ja tem conta? <a onclick="showLogin()">Entrar</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT VIEW -->
+  <div id="chat-view" class="chat-view" style="display:none">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="btn-new-chat" onclick="newChat()">
+          <span>+</span> Nova conversa
+        </button>
+      </div>
+      <div class="session-list" id="session-list"></div>
+      <div class="sidebar-footer">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">User</div>
+          <div class="user-email" id="user-email"></div>
+        </div>
+        <div class="sidebar-actions">
+          <button class="icon-btn" onclick="openSettings()" title="Cron Jobs">&#9881;</button>
+          <button class="icon-btn" onclick="doLogout()" title="Sair">&#10140;</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat -->
+    <main class="chat-main">
+      <div class="chat-header">
+        <button class="menu-btn" onclick="toggleSidebar()">&#9776;</button>
+        <h2 id="chat-title">nanobot</h2>
+        <div></div>
+      </div>
+      <div class="messages-container" id="messages-container">
+        <div class="messages-inner" id="messages">
+          <div class="empty-state" id="empty-state">
+            <h2>nanobot</h2>
+            <p>Seu assistente de IA pessoal. Digite uma mensagem para comecar.</p>
+          </div>
+        </div>
+      </div>
+      <div class="input-area">
+        <div class="input-wrapper">
+          <div class="input-box">
+            <textarea id="msg-input" rows="1" placeholder="Envie uma mensagem..."
+                      onkeydown="handleKey(event)" oninput="autoGrow(this)"></textarea>
+            <button class="send-btn" id="send-btn" onclick="sendMessage()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="input-hint">Enter para enviar, Shift+Enter para nova linha</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeSettings()">&times;</button>
+    <h3>&#9881; Cron Jobs</h3>
+    <div id="cron-list"></div>
+    <hr style="border-color:var(--border);margin:16px 0">
+    <h4 style="font-size:14px;margin-bottom:12px">Novo Cron Job</h4>
+    <div class="form-group">
+      <label>Nome</label>
+      <input type="text" id="cron-name" placeholder="Lembrete diario">
+    </div>
+    <div class="form-group">
+      <label>Mensagem (o que o agente deve fazer)</label>
+      <input type="text" id="cron-message" placeholder="Verifique meus emails e resuma">
+    </div>
+    <div class="form-group">
+      <label>Intervalo (segundos)</label>
+      <input type="number" id="cron-interval" placeholder="3600" value="3600">
+    </div>
+    <button class="btn btn-primary" onclick="addCronJob()" style="margin-top:8px">Criar Job</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+/* ================================================================
+   STATE
+   ================================================================ */
+const state = {
+  token: localStorage.getItem('nanobot_token') || '',
+  user: null,
+  sessions: [],
+  currentSession: null,
+  messages: [],
+  ws: null,
+  sending: false,
+};
+
+/* ================================================================
+   MARKED CONFIG
+   ================================================================ */
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+});
+
+/* ================================================================
+   API HELPERS
+   ================================================================ */
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+  const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers } });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || err.message || 'Request failed');
+  }
+  return res.json();
+}
+
+/* ================================================================
+   AUTH
+   ================================================================ */
+function showLogin() {
+  document.getElementById('login-form').style.display = '';
+  document.getElementById('register-form').style.display = 'none';
+  hideError();
+}
+
+function showRegister() {
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('register-form').style.display = '';
+  hideError();
+}
+
+function showError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+function hideError() {
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+async function doLogin() {
+  const uid = document.getElementById('login-uid').value.trim();
+  if (!uid) return showError('Informe o User ID');
+  try {
+    const data = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: uid }),
+    });
+    state.token = data.token;
+    state.user = data.user;
+    localStorage.setItem('nanobot_token', data.token);
+    enterChat();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+async function doRegister() {
+  const uid = document.getElementById('reg-uid').value.trim();
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  if (!uid) return showError('Informe o User ID');
+  try {
+    const data = await api('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: uid, display_name: name || uid, email: email || null }),
+    });
+    state.token = data.token;
+    state.user = data.user;
+    localStorage.setItem('nanobot_token', data.token);
+    enterChat();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function doLogout() {
+  state.token = '';
+  state.user = null;
+  state.sessions = [];
+  state.currentSession = null;
+  state.messages = [];
+  localStorage.removeItem('nanobot_token');
+  if (state.ws) { state.ws.close(); state.ws = null; }
+  document.getElementById('auth-view').style.display = '';
+  document.getElementById('chat-view').style.display = 'none';
+}
+
+/* ================================================================
+   CHAT INIT
+   ================================================================ */
+async function enterChat() {
+  document.getElementById('auth-view').style.display = 'none';
+  document.getElementById('chat-view').style.display = '';
+  updateUserInfo();
+  await loadSessions();
+  connectWS();
+}
+
+function updateUserInfo() {
+  if (!state.user) return;
+  const initial = (state.user.display_name || state.user.user_id)[0].toUpperCase();
+  document.getElementById('user-avatar').textContent = initial;
+  document.getElementById('user-name').textContent = state.user.display_name || state.user.user_id;
+  document.getElementById('user-email').textContent = state.user.email || state.user.user_id;
+}
+
+/* ================================================================
+   SESSIONS
+   ================================================================ */
+async function loadSessions() {
+  try {
+    state.sessions = await api('/api/sessions');
+    renderSessions();
+  } catch (e) {
+    console.error('Load sessions:', e);
+  }
+}
+
+function renderSessions() {
+  const el = document.getElementById('session-list');
+  if (!state.sessions.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px">Nenhuma conversa ainda</div>';
+    return;
+  }
+  el.innerHTML = state.sessions.map(s => `
+    <div class="session-item ${s.session_key === state.currentSession ? 'active' : ''}"
+         onclick="switchSession('${s.session_key}')">
+      <span class="session-title">${escapeHtml(s.title)}</span>
+      <button class="del-btn" onclick="event.stopPropagation();deleteSession('${s.session_key}')">&times;</button>
+    </div>
+  `).join('');
+}
+
+async function switchSession(key) {
+  state.currentSession = key;
+  renderSessions();
+  try {
+    const msgs = await api(`/api/sessions/${encodeURIComponent(key)}/messages`);
+    state.messages = msgs;
+    renderMessages();
+  } catch (e) {
+    console.error('Load messages:', e);
+  }
+}
+
+async function deleteSession(key) {
+  try {
+    await api(`/api/sessions/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    if (state.currentSession === key) {
+      state.currentSession = null;
+      state.messages = [];
+      renderMessages();
+    }
+    await loadSessions();
+  } catch (e) {
+    console.error('Delete session:', e);
+  }
+}
+
+function newChat() {
+  state.currentSession = null;
+  state.messages = [];
+  renderMessages();
+  renderSessions();
+  document.getElementById('msg-input').focus();
+}
+
+/* ================================================================
+   MESSAGES
+   ================================================================ */
+function renderMessages() {
+  const container = document.getElementById('messages');
+  const empty = document.getElementById('empty-state');
+
+  if (!state.messages.length && !state.currentSession) {
+    container.innerHTML = '';
+    container.appendChild(createEmptyState());
+    return;
+  }
+
+  container.innerHTML = state.messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => renderMessage(m.role, m.content))
+    .join('');
+
+  scrollToBottom();
+}
+
+function createEmptyState() {
+  const div = document.createElement('div');
+  div.className = 'empty-state';
+  div.id = 'empty-state';
+  div.innerHTML = '<h2>nanobot</h2><p>Seu assistente de IA pessoal. Digite uma mensagem para comecar.</p>';
+  return div;
+}
+
+function renderMessage(role, content) {
+  const isUser = role === 'user';
+  const avatar = isUser
+    ? `<div class="message-avatar user">${(state.user?.display_name || 'U')[0].toUpperCase()}</div>`
+    : `<div class="message-avatar bot">N</div>`;
+  const html = isUser ? escapeHtml(content).replace(/\n/g, '<br>') : marked.parse(content || '');
+  return `<div class="message"><div>${avatar}</div><div class="message-content">${html}</div></div>`;
+}
+
+function appendMessage(role, content) {
+  state.messages.push({ role, content });
+  const container = document.getElementById('messages');
+  // Remove empty state
+  const empty = container.querySelector('.empty-state');
+  if (empty) empty.remove();
+  container.insertAdjacentHTML('beforeend', renderMessage(role, content));
+  scrollToBottom();
+}
+
+function showTyping() {
+  const container = document.getElementById('messages');
+  removeTyping();
+  container.insertAdjacentHTML('beforeend',
+    `<div class="message" id="typing-msg">
+      <div><div class="message-avatar bot">N</div></div>
+      <div class="message-content">
+        <div class="typing-indicator"><span></span><span></span><span></span></div>
+        <div id="progress-area"></div>
+      </div>
+    </div>`
+  );
+  scrollToBottom();
+}
+
+function addProgress(text) {
+  const area = document.getElementById('progress-area');
+  if (!area) return;
+  area.innerHTML = `<div class="progress-msg">${escapeHtml(text)}</div>`;
+  scrollToBottom();
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-msg');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  const c = document.getElementById('messages-container');
+  requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
+}
+
+/* ================================================================
+   WEBSOCKET
+   ================================================================ */
+function connectWS() {
+  if (state.ws) { state.ws.close(); state.ws = null; }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws/chat?token=${state.token}`;
+  const ws = new WebSocket(url);
+
+  ws.onopen = () => { console.log('WS connected'); };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'response') {
+      removeTyping();
+      appendMessage('assistant', data.content);
+      state.sending = false;
+      updateSendBtn();
+      // Update session key if new
+      if (data.session_key && !state.currentSession) {
+        state.currentSession = data.session_key;
+      }
+      loadSessions();
+    } else if (data.type === 'progress' || data.type === 'tool_hint') {
+      addProgress(data.content);
+    } else if (data.type === 'error') {
+      removeTyping();
+      appendMessage('assistant', `**Erro:** ${data.content}`);
+      state.sending = false;
+      updateSendBtn();
+    }
+  };
+
+  ws.onclose = () => {
+    console.log('WS disconnected, reconnecting in 3s...');
+    state.ws = null;
+    setTimeout(() => { if (state.token) connectWS(); }, 3000);
+  };
+
+  ws.onerror = (e) => { console.error('WS error:', e); };
+
+  state.ws = ws;
+}
+
+/* ================================================================
+   SEND MESSAGE
+   ================================================================ */
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text || state.sending || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+
+  state.sending = true;
+  updateSendBtn();
+
+  // Generate session key for new chat
+  if (!state.currentSession) {
+    state.currentSession = 'web:' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  }
+
+  appendMessage('user', text);
+  showTyping();
+
+  state.ws.send(JSON.stringify({
+    type: 'message',
+    content: text,
+    session_key: state.currentSession,
+  }));
+
+  input.value = '';
+  input.style.height = 'auto';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function updateSendBtn() {
+  document.getElementById('send-btn').disabled = state.sending;
+}
+
+/* ================================================================
+   CRON SETTINGS
+   ================================================================ */
+function openSettings() {
+  document.getElementById('settings-modal').style.display = '';
+  loadCronJobs();
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+async function loadCronJobs() {
+  try {
+    const jobs = await api('/api/cron');
+    const el = document.getElementById('cron-list');
+    if (!jobs.length) {
+      el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:12px">Nenhum cron job</div>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => `
+      <div class="cron-item">
+        <div>
+          <div class="cron-name">${escapeHtml(j.name)}</div>
+          <div class="cron-detail">${escapeHtml(j.schedule_expr || j.schedule_kind)} — ${escapeHtml(j.message).slice(0, 50)}</div>
+        </div>
+        <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteCronJob('${j.id}')">Remover</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Load cron:', e);
+  }
+}
+
+async function addCronJob() {
+  const name = document.getElementById('cron-name').value.trim();
+  const message = document.getElementById('cron-message').value.trim();
+  const interval = parseInt(document.getElementById('cron-interval').value) || 3600;
+  if (!name || !message) return alert('Preencha nome e mensagem');
+  try {
+    await api('/api/cron', {
+      method: 'POST',
+      body: JSON.stringify({ name, message, kind: 'every', every_seconds: interval }),
+    });
+    document.getElementById('cron-name').value = '';
+    document.getElementById('cron-message').value = '';
+    loadCronJobs();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+async function deleteCronJob(id) {
+  try {
+    await api(`/api/cron/${id}`, { method: 'DELETE' });
+    loadCronJobs();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+/* ================================================================
+   HELPERS
+   ================================================================ */
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+/* ================================================================
+   INIT
+   ================================================================ */
+(async function init() {
+  if (state.token) {
+    try {
+      state.user = await api('/api/me');
+      enterChat();
+    } catch (e) {
+      // Token invalid
+      localStorage.removeItem('nanobot_token');
+      state.token = '';
+    }
+  }
+})();
+</script>
+</body>
+</html>

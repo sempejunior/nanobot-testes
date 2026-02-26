@@ -34,7 +34,6 @@ class ChannelManager:
     def _init_channels(self) -> None:
         """Initialize channels based on config."""
         
-        # Telegram channel
         if self.config.channels.telegram.enabled:
             try:
                 from nanobot.channels.telegram import TelegramChannel
@@ -47,7 +46,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Telegram channel not available: {}", e)
         
-        # WhatsApp channel
         if self.config.channels.whatsapp.enabled:
             try:
                 from nanobot.channels.whatsapp import WhatsAppChannel
@@ -58,7 +56,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("WhatsApp channel not available: {}", e)
 
-        # Discord channel
         if self.config.channels.discord.enabled:
             try:
                 from nanobot.channels.discord import DiscordChannel
@@ -69,7 +66,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Discord channel not available: {}", e)
         
-        # Feishu channel
         if self.config.channels.feishu.enabled:
             try:
                 from nanobot.channels.feishu import FeishuChannel
@@ -80,7 +76,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Feishu channel not available: {}", e)
 
-        # Mochat channel
         if self.config.channels.mochat.enabled:
             try:
                 from nanobot.channels.mochat import MochatChannel
@@ -92,7 +87,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Mochat channel not available: {}", e)
 
-        # DingTalk channel
         if self.config.channels.dingtalk.enabled:
             try:
                 from nanobot.channels.dingtalk import DingTalkChannel
@@ -103,7 +97,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("DingTalk channel not available: {}", e)
 
-        # Email channel
         if self.config.channels.email.enabled:
             try:
                 from nanobot.channels.email import EmailChannel
@@ -114,7 +107,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Email channel not available: {}", e)
 
-        # Slack channel
         if self.config.channels.slack.enabled:
             try:
                 from nanobot.channels.slack import SlackChannel
@@ -125,7 +117,6 @@ class ChannelManager:
             except ImportError as e:
                 logger.warning("Slack channel not available: {}", e)
 
-        # QQ channel
         if self.config.channels.qq.enabled:
             try:
                 from nanobot.channels.qq import QQChannel
@@ -150,23 +141,19 @@ class ChannelManager:
             logger.warning("No channels enabled")
             return
         
-        # Start outbound dispatcher
         self._dispatch_task = asyncio.create_task(self._dispatch_outbound())
-        
-        # Start channels
+
         tasks = []
         for name, channel in self.channels.items():
             logger.info("Starting {} channel...", name)
             tasks.append(asyncio.create_task(self._start_channel(name, channel)))
         
-        # Wait for all to complete (they should run forever)
         await asyncio.gather(*tasks, return_exceptions=True)
     
     async def stop_all(self) -> None:
         """Stop all channels and the dispatcher."""
         logger.info("Stopping all channels...")
         
-        # Stop dispatcher
         if self._dispatch_task:
             self._dispatch_task.cancel()
             try:
@@ -174,7 +161,6 @@ class ChannelManager:
             except asyncio.CancelledError:
                 pass
         
-        # Stop all channels
         for name, channel in self.channels.items():
             try:
                 await channel.stop()

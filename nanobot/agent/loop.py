@@ -16,6 +16,7 @@ from nanobot.agent.memory import MemoryStore
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from nanobot.agent.tools.memory import SaveMemoryTool, SearchMemoryTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
@@ -29,6 +30,8 @@ from nanobot.session.manager import Session, SessionManager
 if TYPE_CHECKING:
     from nanobot.config.schema import ChannelsConfig, ExecToolConfig
     from nanobot.cron.service import CronService
+    from nanobot.db.factory import RepositoryFactory
+    from nanobot.agent.user_context import UserContext
 
 
 class AgentLoop:
@@ -41,6 +44,11 @@ class AgentLoop:
     3. Calls the LLM
     4. Executes tool calls
     5. Sends responses back
+
+    Supports two modes:
+    - **FS mode** (default): single-user, filesystem-backed sessions/memory.
+    - **DB mode** (when ``repos`` is provided): multi-user with per-user
+      isolation via UserContext, rate limiting, and channel binding resolution.
     """
 
     def __init__(
@@ -52,7 +60,7 @@ class AgentLoop:
         max_iterations: int = 40,
         temperature: float = 0.1,
         max_tokens: int = 4096,
-        memory_window: int = 100,
+        memory_window: int = 20,
         brave_api_key: str | None = None,
         exec_config: ExecToolConfig | None = None,
         cron_service: CronService | None = None,
@@ -60,6 +68,7 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
+        repos: RepositoryFactory | None = None,
     ):
         from nanobot.config.schema import ExecToolConfig
         self.bus = bus
@@ -75,6 +84,14 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
+
+        self._repos = repos
+        self._user_contexts: dict[str, UserContext] = {}
+        if repos:
+            from nanobot.agent.user_context import RateLimiter
+            self._rate_limiter: RateLimiter | None = RateLimiter(repos)
+        else:
+            self._rate_limiter = None
 
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
@@ -96,13 +113,16 @@ class AgentLoop:
         self._mcp_stack: AsyncExitStack | None = None
         self._mcp_connected = False
         self._mcp_connecting = False
-        self._consolidating: set[str] = set()  # Session keys with consolidation in progress
-        self._consolidation_tasks: set[asyncio.Task] = set()  # Strong refs to in-flight tasks
+        self._consolidating: set[str] = set()
+        self._consolidation_tasks: set[asyncio.Task] = set()
         self._consolidation_locks: dict[str, asyncio.Lock] = {}
-        self._register_default_tools()
+        if not self._repos:
+            self._register_default_tools()
 
     def _register_default_tools(self) -> None:
-        """Register the default set of tools."""
+        """Register the default set of tools (FS mode only)."""
+        import os
+        from nanobot.agent.tools.skill import SaveSkillTool
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
@@ -115,8 +135,20 @@ class AgentLoop:
         self.tools.register(WebFetchTool())
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(SaveSkillTool(workspace=self.workspace))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+        fs_memory = MemoryStore(self.workspace)
+        self.tools.register(SaveMemoryTool(fs_memory))
+        self.tools.register(SearchMemoryTool(fs_memory))
+        if os.environ.get("DISPLAY"):
+            from nanobot.agent.tools.screenshot import ScreenshotTool
+            from nanobot.agent.tools.computer import ComputerTool
+            self.tools.register(ScreenshotTool())
+            self.tools.register(ComputerTool())
+            from nanobot.agent.tools.browser import BrowserTool, cdp_available
+            if cdp_available():
+                self.tools.register(BrowserTool())
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -140,19 +172,23 @@ class AgentLoop:
         finally:
             self._mcp_connecting = False
 
-    def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+    def _set_tool_context(
+        self, channel: str, chat_id: str, message_id: str | None = None,
+        *, tools: ToolRegistry | None = None, user_id: str = "",
+    ) -> None:
         """Update context for all tools that need routing info."""
-        if message_tool := self.tools.get("message"):
+        _tools = tools or self.tools
+        if message_tool := _tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.set_context(channel, chat_id, message_id)
 
-        if spawn_tool := self.tools.get("spawn"):
+        if spawn_tool := _tools.get("spawn"):
             if isinstance(spawn_tool, SpawnTool):
                 spawn_tool.set_context(channel, chat_id)
 
-        if cron_tool := self.tools.get("cron"):
+        if cron_tool := _tools.get("cron"):
             if isinstance(cron_tool, CronTool):
-                cron_tool.set_context(channel, chat_id)
+                cron_tool.set_context(channel, chat_id, user_id=user_id)
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
@@ -171,26 +207,71 @@ class AgentLoop:
             return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
+    async def _resolve_user_id(self, msg: InboundMessage) -> str | None:
+        """Resolve user_id from the message or via ChannelBindingRepository."""
+        if msg.user_id:
+            return msg.user_id
+        if self._repos:
+            return await self._repos.channel_bindings.resolve_user(msg.channel, msg.sender_id)
+        return None
+
+    async def _get_user_context(self, user_id: str) -> "UserContext":
+        """Get or build a cached UserContext for a user."""
+        if user_id in self._user_contexts:
+            return self._user_contexts[user_id]
+
+        from nanobot.agent.user_context import build_user_context
+        uctx = await build_user_context(
+            user_id,
+            self._repos,
+            self.workspace,
+            self.bus,
+            brave_api_key=self.brave_api_key,
+            cron_service=self.cron_service,
+        )
+
+        if self._mcp_connected:
+            for name, tool in self.tools._tools.items():
+                if name.startswith("mcp_") and not uctx.tools.has(name):
+                    uctx.tools.register(tool)
+
+        self._user_contexts[user_id] = uctx
+        return uctx
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        *,
+        tools: ToolRegistry | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_iterations: int | None = None,
+        provider: LLMProvider | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop. Returns (final_content, tools_used, messages)."""
+        _tools = tools or self.tools
+        _provider = provider or self.provider
+        _model = model or self.model
+        _temp = temperature if temperature is not None else self.temperature
+        _max_tokens = max_tokens or self.max_tokens
+        _max_iter = max_iterations or self.max_iterations
+
         messages = initial_messages
         iteration = 0
         final_content = None
         tools_used: list[str] = []
 
-        while iteration < self.max_iterations:
+        while iteration < _max_iter:
             iteration += 1
 
-            response = await self.provider.chat(
+            response = await _provider.chat(
                 messages=messages,
-                tools=self.tools.get_definitions(),
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                tools=_tools.get_definitions(),
+                model=_model,
+                temperature=_temp,
+                max_tokens=_max_tokens,
             )
 
             if response.has_tool_calls:
@@ -220,7 +301,7 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    result = await _tools.execute(tool_call.name, tool_call.arguments)
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -228,10 +309,10 @@ class AgentLoop:
                 final_content = self._strip_think(response.content)
                 break
 
-        if final_content is None and iteration >= self.max_iterations:
-            logger.warning("Max iterations ({}) reached", self.max_iterations)
+        if final_content is None and iteration >= _max_iter:
+            logger.warning("Max iterations ({}) reached", _max_iter)
             final_content = (
-                f"I reached the maximum number of tool call iterations ({self.max_iterations}) "
+                f"I reached the maximum number of tool call iterations ({_max_iter}) "
                 "without completing the task. You can try breaking the task into smaller steps."
             )
 
@@ -276,6 +357,33 @@ class AgentLoop:
                 pass  # MCP SDK cancel scope cleanup is noisy but harmless
             self._mcp_stack = None
 
+    async def reload_mcp(self, mcp_servers: dict) -> None:
+        """Dynamically reload MCP servers."""
+        from loguru import logger
+        logger.info("Reloading MCP servers...")
+        await self.close_mcp()
+        
+        for name in list(self.tools._tools.keys()):
+            if name.startswith("mcp_"):
+                self.tools.unregister(name)
+
+        for uctx in self._user_contexts.values():
+            for name in list(uctx.tools._tools.keys()):
+                if name.startswith("mcp_"):
+                    uctx.tools.unregister(name)
+                    
+        self._mcp_servers = mcp_servers
+        self._mcp_connected = False
+        self._mcp_connecting = False
+        await self._connect_mcp()
+        
+        if self._mcp_connected:
+            for name, tool in self.tools._tools.items():
+                if name.startswith("mcp_"):
+                    for uctx in self._user_contexts.values():
+                        if not uctx.tools.has(name):
+                            uctx.tools.register(tool)
+
     def stop(self) -> None:
         """Stop the agent loop."""
         self._running = False
@@ -300,22 +408,58 @@ class AgentLoop:
         on_progress: Callable[[str], Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
-        # System messages: parse origin from chat_id ("channel:chat_id")
+
+        uctx: UserContext | None = None
+        if self._repos:
+            user_id = await self._resolve_user_id(msg)
+            if not user_id:
+                return OutboundMessage(
+                    channel=msg.channel, chat_id=msg.chat_id,
+                    content="Access denied: unrecognized user. Contact admin for access.",
+                )
+
+            if self._rate_limiter:
+                rate_err = await self._rate_limiter.check(user_id)
+                if rate_err:
+                    return OutboundMessage(
+                        channel=msg.channel, chat_id=msg.chat_id, content=rate_err,
+                    )
+
+            uctx = await self._get_user_context(user_id)
+            if self._rate_limiter:
+                self._rate_limiter.record_request(user_id)
+
+        sessions = uctx.sessions if uctx else self.sessions
+        context = uctx.context if uctx else self.context
+        tools = uctx.tools if uctx else self.tools
+        _provider = uctx.provider if uctx and uctx.provider else self.provider
+        _model = uctx.model if uctx else self.model
+        _max_tokens = uctx.max_tokens if uctx else self.max_tokens
+        _temperature = uctx.temperature if uctx else self.temperature
+        _max_iterations = uctx.max_iterations if uctx else self.max_iterations
+        _memory_window = uctx.memory_window if uctx else self.memory_window
+        _memory: MemoryStore | None = uctx.memory if uctx else None
+
         if msg.channel == "system":
             channel, chat_id = (msg.chat_id.split(":", 1) if ":" in msg.chat_id
                                 else ("cli", msg.chat_id))
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
-            session = self.sessions.get_or_create(key)
-            self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            history = session.get_history(max_messages=self.memory_window)
-            messages = self.context.build_messages(
+            session = await sessions.get_or_create(key)
+            _user_id = uctx.user_id if uctx else ""
+            self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"), tools=tools, user_id=_user_id)
+            history = session.get_history(max_messages=_memory_window)
+            messages = await context.build_messages(
                 history=history,
                 current_message=msg.content, channel=channel, chat_id=chat_id,
             )
-            final_content, _, all_msgs = await self._run_agent_loop(messages)
+            final_content, _, all_msgs = await self._run_agent_loop(
+                messages, tools=tools, model=_model, temperature=_temperature,
+                max_tokens=_max_tokens, max_iterations=_max_iterations,
+                provider=_provider,
+            )
             self._save_turn(session, all_msgs, 1 + len(history))
-            self.sessions.save(session)
+            await sessions.save(session)
             return OutboundMessage(channel=channel, chat_id=chat_id,
                                   content=final_content or "Background task completed.")
 
@@ -323,9 +467,8 @@ class AgentLoop:
         logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         key = session_key or msg.session_key
-        session = self.sessions.get_or_create(key)
+        session = await sessions.get_or_create(key)
 
-        # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
             lock = self._get_consolidation_lock(session.key)
@@ -336,7 +479,7 @@ class AgentLoop:
                     if snapshot:
                         temp = Session(key=session.key)
                         temp.messages = list(snapshot)
-                        if not await self._consolidate_memory(temp, archive_all=True):
+                        if not await self._consolidate_memory(temp, archive_all=True, memory=_memory):
                             return OutboundMessage(
                                 channel=msg.channel, chat_id=msg.chat_id,
                                 content="Memory archival failed, session not cleared. Please try again.",
@@ -352,8 +495,8 @@ class AgentLoop:
                 self._prune_consolidation_lock(session.key, lock)
 
             session.clear()
-            self.sessions.save(session)
-            self.sessions.invalidate(session.key)
+            await sessions.save(session)
+            sessions.invalidate(session.key)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id,
                                   content="New session started.")
         if cmd == "/help":
@@ -361,14 +504,15 @@ class AgentLoop:
                                   content="🐈 nanobot commands:\n/new — Start a new conversation\n/help — Show available commands")
 
         unconsolidated = len(session.messages) - session.last_consolidated
-        if (unconsolidated >= self.memory_window and session.key not in self._consolidating):
+        if (unconsolidated >= _memory_window and session.key not in self._consolidating):
             self._consolidating.add(session.key)
             lock = self._get_consolidation_lock(session.key)
+            _mem = _memory  # capture for closure
 
             async def _consolidate_and_unlock():
                 try:
                     async with lock:
-                        await self._consolidate_memory(session)
+                        await self._consolidate_memory(session, memory=_mem)
                 finally:
                     self._consolidating.discard(session.key)
                     self._prune_consolidation_lock(session.key, lock)
@@ -379,13 +523,14 @@ class AgentLoop:
             _task = asyncio.create_task(_consolidate_and_unlock())
             self._consolidation_tasks.add(_task)
 
-        self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
-        if message_tool := self.tools.get("message"):
+        _user_id = uctx.user_id if uctx else ""
+        self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"), tools=tools, user_id=_user_id)
+        if message_tool := tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        history = session.get_history(max_messages=self.memory_window)
-        initial_messages = self.context.build_messages(
+        history = session.get_history(max_messages=_memory_window)
+        initial_messages = await context.build_messages(
             history=history,
             current_message=msg.content,
             media=msg.media if msg.media else None,
@@ -402,6 +547,9 @@ class AgentLoop:
 
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages, on_progress=on_progress or _bus_progress,
+            tools=tools, model=_model, temperature=_temperature,
+            max_tokens=_max_tokens, max_iterations=_max_iterations,
+            provider=_provider,
         )
 
         if final_content is None:
@@ -411,9 +559,9 @@ class AgentLoop:
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         self._save_turn(session, all_msgs, 1 + len(history))
-        self.sessions.save(session)
+        await sessions.save(session)
 
-        if message_tool := self.tools.get("message"):
+        if message_tool := tools.get("message"):
             if isinstance(message_tool, MessageTool) and message_tool._sent_in_turn:
                 return None
 
@@ -429,17 +577,28 @@ class AgentLoop:
         from datetime import datetime
         for m in messages[skip:]:
             entry = {k: v for k, v in m.items() if k != "reasoning_content"}
-            if entry.get("role") == "tool" and isinstance(entry.get("content"), str):
-                content = entry["content"]
-                if len(content) > self._TOOL_RESULT_MAX_CHARS:
+            if entry.get("role") == "tool":
+                content = entry.get("content")
+                if isinstance(content, list):
+                    text_parts = [b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text"]
+                    has_images = any(isinstance(b, dict) and b.get("type") == "image_url" for b in content)
+                    text = "\n".join(text_parts)
+                    if has_images:
+                        text += "\n[screenshot]"
+                    entry["content"] = text[:self._TOOL_RESULT_MAX_CHARS]
+                elif isinstance(content, str) and len(content) > self._TOOL_RESULT_MAX_CHARS:
                     entry["content"] = content[:self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             entry.setdefault("timestamp", datetime.now().isoformat())
             session.messages.append(entry)
         session.updated_at = datetime.now()
 
-    async def _consolidate_memory(self, session, archive_all: bool = False) -> bool:
+    async def _consolidate_memory(
+        self, session: Session, *, archive_all: bool = False,
+        memory: MemoryStore | None = None,
+    ) -> bool:
         """Delegate to MemoryStore.consolidate(). Returns True on success."""
-        return await MemoryStore(self.workspace).consolidate(
+        _memory = memory or MemoryStore(self.workspace)
+        return await _memory.consolidate(
             session, self.provider, self.model,
             archive_all=archive_all, memory_window=self.memory_window,
         )
@@ -451,9 +610,13 @@ class AgentLoop:
         channel: str = "cli",
         chat_id: str = "direct",
         on_progress: Callable[[str], Awaitable[None]] | None = None,
+        user_id: str | None = None,
     ) -> str:
         """Process a message directly (for CLI or cron usage)."""
         await self._connect_mcp()
-        msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
+        msg = InboundMessage(
+            channel=channel, sender_id="user", chat_id=chat_id,
+            content=content, user_id=user_id,
+        )
         response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
         return response.content if response else ""

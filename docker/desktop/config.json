@@ -1,0 +1,45 @@
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": ""
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-sonnet-4-20250514",
+      "temperature": 0.7,
+      "maxTokens": 4096,
+      "maxToolIterations": 10,
+      "memoryWindow": 10
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "apiKey": ""
+      }
+    },
+    "exec": {
+      "timeout": 30
+    },
+    "restrictToWorkspace": false,
+    "mcp_servers": {}
+  },
+  "channels": {
+    "telegram": { "enabled": false, "token": "" },
+    "whatsapp": { "enabled": false, "bridgeUrl": "ws://localhost:3001" },
+    "discord": { "enabled": false, "token": "" },
+    "slack": { "enabled": false, "appToken": "", "botToken": "" },
+    "feishu": { "enabled": false, "appId": "", "appSecret": "" },
+    "dingtalk": { "enabled": false, "clientId": "", "clientSecret": "" },
+    "qq": { "enabled": false, "appId": "", "appSecret": "" },
+    "email": { "enabled": false },
+    "mochat": { "enabled": false }
+  },
+  "gateway": {
+    "heartbeat": {
+      "enabled": false,
+      "interval_s": 3600
+    }
+  }
+}
