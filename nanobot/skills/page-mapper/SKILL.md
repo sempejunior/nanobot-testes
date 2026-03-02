@@ -35,7 +35,7 @@ JSON.stringify({
   url: location.href,
   sections: [...document.querySelectorAll('nav, aside, [role="navigation"], .sidebar, header')].map(section => ({
     label: section.getAttribute('aria-label') || section.tagName.toLowerCase(),
-    links: [...section.querySelectorAll('a')].map(a => ({
+    links: [...section.querySelectorAll('a')].slice(0, 30).map(a => ({
       text: a.textContent.trim(),
       href: a.getAttribute('href')
     })).filter(a => a.text && a.href && !a.href.startsWith('javascript:'))
@@ -43,11 +43,16 @@ JSON.stringify({
 }, null, 2)
 ```
 
-### 3. Save as a site skill
+For sites with dropdown menus or collapsible sections, trigger the hover/click first, then re-run the extraction to capture hidden links.
 
-**skill_name**: `site-<name>` (e.g., `site-jira`)
+### 3. Present to user and save
 
-**Template**:
+Show the extracted navigation to the user for review before saving. Remove noise (generic footer links, login/logout, cookie banners).
+
+Call `save_skill` with:
+- `skill_name`: `site-<name>` (e.g. `site-jira`)
+- `skill_description`: describe the site and what pages are covered, e.g. "Jira Cloud navigation map. Use when navigating Jira pages, finding boards, projects, or issue views."
+- `skill_content`: the skill body using this template (do NOT include YAML frontmatter, it is added automatically):
 
 ```markdown
 # <Site Name>
@@ -80,32 +85,46 @@ browser(url="https://app.example.com/board", code="document.title + ' — ' + wi
 JSON.stringify({
   title: document.title,
   url: location.href,
-  nav: [...document.querySelectorAll('nav a, header a, [role="navigation"] a')].map(a => ({
+  nav: [...document.querySelectorAll('nav a, header a, [role="navigation"] a')].slice(0, 30).map(a => ({
     text: a.textContent.trim(),
     href: a.getAttribute('href'),
-    selector: a.id ? '#' + a.id : 'a[href="' + a.getAttribute('href') + '"]'
+    selector: a.id ? '#' + a.id
+      : a.getAttribute('data-testid') ? '[data-testid="' + a.getAttribute('data-testid') + '"]'
+      : a.getAttribute('aria-label') ? '[aria-label="' + a.getAttribute('aria-label') + '"]'
+      : 'a[href="' + a.getAttribute('href') + '"]'
   })).filter(a => a.text),
   forms: [...document.querySelectorAll('form')].map(f => ({
     id: f.id || null,
     action: f.action,
     method: f.method,
-    selector: f.id ? '#' + f.id : 'form[action="' + f.getAttribute('action') + '"]',
+    selector: f.id ? '#' + f.id
+      : f.getAttribute('action') ? 'form[action="' + f.getAttribute('action') + '"]'
+      : null,
     fields: [...f.querySelectorAll('input,select,textarea,button')].map(el => ({
       tag: el.tagName.toLowerCase(),
       type: el.type || null,
       name: el.name || null,
       placeholder: el.placeholder || null,
-      selector: el.id ? '#' + el.id : el.name ? el.tagName.toLowerCase() + '[name="' + el.name + '"]' : null
+      selector: el.id ? '#' + el.id
+        : el.getAttribute('data-testid') ? '[data-testid="' + el.getAttribute('data-testid') + '"]'
+        : el.name ? el.tagName.toLowerCase() + '[name="' + el.name + '"]'
+        : null
     })).filter(el => el.selector)
   })),
-  buttons: [...document.querySelectorAll('button:not(form button), [role="button"], input[type="submit"]')].map(b => ({
+  buttons: [...document.querySelectorAll('button:not(form button), [role="button"], input[type="submit"]')].slice(0, 30).map(b => ({
     text: b.textContent.trim() || b.value || '',
-    selector: b.id ? '#' + b.id : null
-  })).filter(b => b.text),
-  links: [...document.querySelectorAll('main a, [role="main"] a, .content a, #content a')].map(a => ({
+    selector: b.id ? '#' + b.id
+      : b.getAttribute('data-testid') ? '[data-testid="' + b.getAttribute('data-testid') + '"]'
+      : b.getAttribute('aria-label') ? '[aria-label="' + b.getAttribute('aria-label') + '"]'
+      : null
+  })).filter(b => b.text && b.selector),
+  links: [...document.querySelectorAll('main a, [role="main"] a, .content a, #content a')].slice(0, 50).map(a => ({
     text: a.textContent.trim(),
     href: a.getAttribute('href'),
-    selector: a.id ? '#' + a.id : 'a[href="' + a.getAttribute('href') + '"]'
+    selector: a.id ? '#' + a.id
+      : a.getAttribute('data-testid') ? '[data-testid="' + a.getAttribute('data-testid') + '"]'
+      : a.getAttribute('aria-label') ? '[aria-label="' + a.getAttribute('aria-label') + '"]'
+      : 'a[href="' + a.getAttribute('href') + '"]'
   })).filter(a => a.text && a.href)
 }, null, 2)
 ```
@@ -116,11 +135,14 @@ JSON.stringify({
 - For SPAs, scroll or trigger UI state changes, then re-extract to capture dynamic elements.
 - For complex pages, extract per section instead of one big dump.
 
-### 4. Save as a page skill
+### 4. Present to user and save
 
-**skill_name**: `page-<site>-<page>` (e.g., `page-jira-board`)
+Show the extracted map to the user for review before saving. Ask if they want to save, edit, or re-extract.
 
-**Template**:
+Call `save_skill` with:
+- `skill_name`: `page-<site>-<page>` (e.g. `page-jira-board`)
+- `skill_description`: describe the page and its interactive elements, e.g. "Jira board page selectors. Use when interacting with the Jira board — creating issues, filtering, navigating sprints."
+- `skill_content`: the skill body using this template (do NOT include YAML frontmatter):
 
 ```markdown
 # <Page Title>
@@ -148,6 +170,8 @@ Part of: site-<name>
 browser(url="<url>", code="<js>")
 ```
 
+**Never save a skill without user confirmation.**
+
 ## Tips
 
 - For SPAs (React, Vue, Angular), prefer `data-testid` or `aria-label` selectors over class names — they survive re-renders.
@@ -155,3 +179,4 @@ browser(url="<url>", code="<js>")
 - For authenticated pages, log in first, then extract.
 - Keep generated skills lean — only include elements the user actually interacts with.
 - Start with `site-` discovery, then map individual pages as needed.
+- Content inside iframes is not captured by the default extraction. For iframes, navigate to the iframe URL directly. For Shadow DOM, access elements via `element.shadowRoot.querySelectorAll(...)`.
